@@ -1,0 +1,12 @@
+__pycache__
+*.egg-info
+
+# Brian2/Brian2CUDA generated standalone code
+code/output*
+
+# Simulation results (large parquet files)
+data/results
+
+# PyTorch cached weight matrices (generated from connectivity data)
+data/weight_coo.pkl
+data/weight_csr.pkl

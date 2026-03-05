@@ -1,0 +1,19 @@
+name: brain-fly
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - brian2cuda==1.0a7
+    - torch
+    - tqdm
+  - numpy=1.26.4
+  - jupyter
+  - ipykernel
+  - pandas
+  - joblib
+  - pyarrow
+  - scipy
+  - matplotlib
