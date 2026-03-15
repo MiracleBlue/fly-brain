@@ -10,7 +10,8 @@ dependencies:
     - brian2cuda==1.0a7
     - torch
     - tqdm
-  - numpy=1.26.4
+    - flygym
+  - "numpy>=2.0"
   - jupyter
   - ipykernel
   - pandas

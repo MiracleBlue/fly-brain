@@ -191,7 +191,7 @@ def save_result_csv(backend_name, result):
         existing_rows.append({k: str(v) for k, v in row.items()})
 
     with open(csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(existing_rows)
 

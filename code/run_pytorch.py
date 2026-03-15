@@ -174,7 +174,17 @@ class TorchModel(nn.Module):
     def __init__(self, batch, size, dt, params, weights, device='cpu'):
         super().__init__()
         self.neurons = AlphaLIF(batch, size, dt, params, device=device)
-        self.weights = weights
+        self.device = device
+        if device == 'mps':
+            self.use_mps_sparse = True
+            weights = weights.coalesce()
+            self.edge_post = weights.indices()[0].to(device)
+            self.edge_pre = weights.indices()[1].to(device)
+            self.edge_weight = weights.values().to(device)
+            self.weights = None
+        else:
+            self.use_mps_sparse = False
+            self.weights = weights
         self.poisson = PoissonSpikeGenerator(dt, params['scalePoisson'], device=device)
         self.scale = params['wScale']
 
@@ -183,7 +193,14 @@ class TorchModel(nn.Module):
 
     def forward(self, rates, conductance, delay_buffer, spikes, v, refrac, generator=None):
         spikes_input = self.poisson(rates, generator=generator)
-        weighted_spikes = torch.matmul(spikes, self.weights.transpose(0, 1))
+        if self.use_mps_sparse:
+            b = spikes.shape[0]
+            edge_spikes = spikes[:, self.edge_pre] * self.edge_weight
+            weighted_spikes = torch.zeros_like(spikes)
+            weighted_spikes.scatter_add_(1, self.edge_post.unsqueeze(0).expand(b, -1), edge_spikes)
+        else:
+            weighted_spikes = torch.matmul(spikes, self.weights.transpose(0, 1))
+
         conductance, delay_buffer, spikes, v, refrac = self.neurons(
             self.scale * (spikes_input + weighted_spikes),
             conductance, delay_buffer, spikes, v, refrac,
@@ -255,7 +272,12 @@ def run_single_benchmark(t_run_sec, n_run, experiment, logger,
 
     Uses batch_size = n_run to run all trials in parallel on GPU.
     """
-    device_name = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        device_name = 'mps'
+    elif torch.cuda.is_available():
+        device_name = 'cuda'
+    else:
+        device_name = 'cpu'
     t_sim_ms = t_run_sec * 1000.0
     num_steps = int(t_sim_ms / DT)
 
@@ -286,8 +308,9 @@ def run_single_benchmark(t_run_sec, n_run, experiment, logger,
         # ===== Phase 2: Load weights =====
         logger.log("Loading weights...")
         t_weights_start = time()
-        weights = get_weights(str(path_con), str(path_comp), str(path_wt), csr=True)
-        weights = weights.to(device=device_name)
+        weights = get_weights(str(path_con), str(path_comp), str(path_wt), csr=(device_name != 'mps'))
+        if device_name != 'mps':
+            weights = weights.to(device=device_name)
         num_neurons = weights.shape[0]
         timings['weight_loading'] = time() - t_weights_start
         logger.log(f"  Weight loading:   {timings['weight_loading']:.3f}s")
@@ -346,6 +369,8 @@ def run_single_benchmark(t_run_sec, n_run, experiment, logger,
 
         if device_name == 'cuda':
             torch.cuda.synchronize()
+        elif device_name == 'mps':
+            torch.mps.synchronize()
 
         timings['simulation_total'] = time() - t_simulation_start
         timings['simulation_avg_per_trial'] = timings['simulation_total'] / n_run
@@ -473,7 +498,12 @@ def run_all_benchmarks(t_run_values=None, n_run_values=None,
     if experiment is None:
         experiment = get_experiment()
 
-    device_name = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        device_name = 'mps'
+    elif torch.cuda.is_available():
+        device_name = 'cuda'
+    else:
+        device_name = 'cpu'
     backend_name = f'PyTorch ({device_name.upper()})'
 
     benchmarks = []
@@ -490,6 +520,8 @@ def run_all_benchmarks(t_run_values=None, n_run_values=None,
     logger.log(f"Device: {device_name.upper()}")
     if device_name == 'cuda':
         logger.log(f"GPU: {torch.cuda.get_device_name(0)}")
+    elif device_name == 'mps':
+        logger.log("GPU: Apple Silicon (MPS)")
     logger.log(f"t_run values: {t_run_values} seconds")
     logger.log(f"n_run values: {n_run_values}")
     logger.log(f"Total benchmarks: {total_runs}")

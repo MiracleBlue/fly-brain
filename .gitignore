@@ -10,3 +10,10 @@ data/results
 # PyTorch cached weight matrices (generated from connectivity data)
 data/weight_coo.pkl
 data/weight_csr.pkl
+
+.ignore/
+*.mp4
+debug_flygym.py
+2023neckconnective-main
+*.log
+.DS_Store
