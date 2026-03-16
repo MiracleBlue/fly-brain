@@ -17,3 +17,4 @@ debug_flygym.py
 2023neckconnective-main
 *.log
 .DS_Store
+data/
